@@ -30,6 +30,7 @@ mod nfs;
 mod ninep;
 mod parse_object_store;
 mod prometheus;
+mod influx;
 mod redis_conditional_store;
 mod rpc;
 mod secrets;

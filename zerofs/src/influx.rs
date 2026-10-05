@@ -7,14 +7,41 @@ use crate::dedup::DedupCache;
 use crate::fs::metrics::{FileSystemStats, SegmentReclaimStats};
 use crate::fs::stats::FileSystemGlobalStats;
 
-pub fn start(
-    config_phat: PathBuf,
-    fs_stats: Arc<FileSystemStats>,
-    global_stats: Arc<FileSystemGlobalStats>,
-    segment_reclaim_stats: Arc<SegmentReclaimStats>,
-    dedup_cache: Arc<DedupCache>,
-    default_metrics_recorder: Option<Arc<DefaultMetricsRecorder>>,
-    shutdown: CancellationToken
-) -> Vec<JoinHandle<()>> {
+use crate::config::InfluxConfig;
+use crate::fs::ZeroFS;
+
+struct InfluxExporter {
+    fs: Arc<ZeroFS>,
+    influx: InfluxClient,
+    shutdown: CancellationToken,
+}
+
+impl InfluxExporter {
+    fn new(fs: Arc<ZeroFS>, influx: InfluxClient, shutdown: CancellationToken) -> Self {
+        Self {
+            fs,
+            influx,
+            shutdown,
+        }
+    }
+
+    fn run_metric_exporter(self) {
+        todo!()
+    }
+}
+
+pub async fn start_influx_exporter(
+    config: &InfluxConfig,
+    fs: Arc<ZeroFS>,
+    shutdown: CancellationToken,
+) -> Option<JoinHandle<()>> {
+    let influx = build_influx_client(config);
+    let influx_exporter = InfluxExporter::new(fs, influx, shutdown);
+
+    let mut handles = Vec::new();
+    handles.push(spawn_named("influx-metric-exporter", async move {
+        influx_exporter.run_metric_exporter()
+    }));
+
     todo!()
 }

@@ -906,17 +906,8 @@ pub async fn run_server(
         Vec::new()
     };
 
-    let influx_handles = if let Some(ref influx_config) = settings.influx {
-        let slatedb_registry = fs.db.slatedb_metrics();
-        crate::influx::start(
-            config_path,
-            Arc::clone(&fs.stats),
-            Arc::clone(&fs.global_stats),
-            fs.extent_store.segment_reclaim_stats(),
-            Arc::clone(&fs.dedup),
-            slatedb_registry,
-            shutdown.clone()
-        )
+    let influx_handle = if let Some(ref influx_config) = settings.influx {
+        crate::influx::start_influx_exporter(influx_config, Arc::clone(&fs), shutdown.clone()).await
     } else {
         Vec::new()
     };
@@ -1174,6 +1165,9 @@ pub async fn run_server(
             let _ = handle.await;
         }
         for handle in prometheus_handles {
+            let _ = handle.await;
+        }
+        if let Some(handle) = influx_handle {
             let _ = handle.await;
         }
     };

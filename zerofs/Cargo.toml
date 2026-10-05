@@ -150,6 +150,8 @@ tonic-web = { version = "0.13", optional = true }
 tower-http = { version = "0.6", features = ["cors"], optional = true }
 foyer = "0.22"
 
+influxdb2 = { version = "0.5.2", default-features = false, features = ["rustls"] }
+
 # The `zerofs mount` FUSE client. default-features = false uses the pure-Rust
 # mount path via the fusermount3 helper, so no libfuse linkage is required.
 [target.'cfg(target_os = "linux")'.dependencies]

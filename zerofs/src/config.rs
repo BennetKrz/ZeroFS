@@ -552,7 +552,7 @@ pub struct InfluxConfig {
     #[serde(
         deserialize_with = "deserialize_expandable_string"
     )]
-    pub addresses: String,
+    pub url: String,
     #[serde(
         deserialize_with = "deserialize_expandable_string"
     )]

@@ -1,11 +1,8 @@
-use std::path::PathBuf;
+use crate::task::spawn_named;
+use influxdb2::Client as InfluxClient;
 use std::sync::Arc;
-use slatedb_common::metrics::DefaultMetricsRecorder;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
-use crate::dedup::DedupCache;
-use crate::fs::metrics::{FileSystemStats, SegmentReclaimStats};
-use crate::fs::stats::FileSystemGlobalStats;
 
 use crate::config::InfluxConfig;
 use crate::fs::ZeroFS;
@@ -44,4 +41,12 @@ pub async fn start_influx_exporter(
     }));
 
     todo!()
+}
+
+fn build_influx_client(config: &InfluxConfig) -> InfluxClient {
+    InfluxClient::new(
+        config.url.clone(),
+        config.org.clone(),
+        config.auth_token.clone(),
+    )
 }

@@ -906,6 +906,21 @@ pub async fn run_server(
         Vec::new()
     };
 
+    let influx_handles = if let Some(ref influx_config) = settings.influx {
+        let slatedb_registry = fs.db.slatedb_metrics();
+        crate::influx::start(
+            config_path,
+            Arc::clone(&fs.stats),
+            Arc::clone(&fs.global_stats),
+            fs.extent_store.segment_reclaim_stats(),
+            Arc::clone(&fs.dedup),
+            slatedb_registry,
+            shutdown.clone()
+        )
+    } else {
+        Vec::new()
+    };
+
     // Metadata compaction digest: at most one line per interval, only when
     // compaction ran, plus a crossing-only L0 backlog warning. Summarizes the
     // engine's per-compaction lines, which the default filter drops.

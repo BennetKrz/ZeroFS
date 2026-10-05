@@ -110,6 +110,8 @@ pub struct Settings {
     pub telemetry: Option<TelemetryConfig>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub prometheus: Option<PrometheusConfig>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub influx: Option<InfluxConfig>,
     /// HA replication. Absent means single-node (non-replicated behavior).
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub replication: Option<ReplicationConfig>,
@@ -544,6 +546,27 @@ pub struct PrometheusConfig {
     pub addresses: HashSet<SocketAddr>,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct InfluxConfig {
+    #[serde(
+        deserialize_with = "deserialize_expandable_string"
+    )]
+    pub addresses: String,
+    #[serde(
+        deserialize_with = "deserialize_expandable_string"
+    )]
+    pub org: String,
+    #[serde(
+        deserialize_with = "deserialize_expandable_string"
+    )]
+    pub auth_token: String,
+    #[serde(
+        deserialize_with = "deserialize_expandable_string"
+    )]
+    pub bucket: String,
+}
+
 pub struct AwsConfig(pub std::collections::HashMap<String, String>);
 
 impl std::fmt::Debug for AwsConfig {
@@ -627,6 +650,15 @@ fn default_prometheus_addresses() -> HashSet<SocketAddr> {
     set.insert(SocketAddr::new(
         IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)),
         9091,
+    ));
+    set
+}
+
+fn default_influx_addresses() -> HashSet<SocketAddr> {
+    let mut set = HashSet::new();
+    set.insert(SocketAddr::new(
+        IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)),
+        8086,
     ));
     set
 }
@@ -939,6 +971,7 @@ impl Settings {
             gcp: None,
             telemetry: None,
             prometheus: None,
+            influx: None,
             replication: None,
         }
     }

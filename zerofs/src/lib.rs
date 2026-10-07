@@ -31,6 +31,7 @@ mod ninep;
 mod parse_object_store;
 mod prometheus;
 mod influx;
+mod metrics_snapshot;
 mod redis_conditional_store;
 mod rpc;
 mod secrets;

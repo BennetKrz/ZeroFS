@@ -532,6 +532,10 @@ fn default_true() -> bool {
     true
 }
 
+fn default_false() -> bool {
+    false
+}
+
 fn default_telemetry() -> Option<TelemetryConfig> {
     Some(TelemetryConfig { enabled: true })
 }
@@ -549,22 +553,18 @@ pub struct PrometheusConfig {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct InfluxConfig {
-    #[serde(
-        deserialize_with = "deserialize_expandable_string"
-    )]
+    #[serde(deserialize_with = "deserialize_expandable_string")]
     pub url: String,
-    #[serde(
-        deserialize_with = "deserialize_expandable_string"
-    )]
+    #[serde(deserialize_with = "deserialize_expandable_string")]
     pub org: String,
-    #[serde(
-        deserialize_with = "deserialize_expandable_string"
-    )]
+    #[serde(deserialize_with = "deserialize_expandable_string")]
     pub auth_token: String,
-    #[serde(
-        deserialize_with = "deserialize_expandable_string"
-    )]
+    #[serde(deserialize_with = "deserialize_expandable_string")]
     pub bucket: String,
+    #[serde(default = "default_false")]
+    pub enable_object_trace: bool,
+    #[serde(default = "default_false")]
+    pub enable_faccess_trace: bool,
 }
 
 pub struct AwsConfig(pub std::collections::HashMap<String, String>);
@@ -650,15 +650,6 @@ fn default_prometheus_addresses() -> HashSet<SocketAddr> {
     set.insert(SocketAddr::new(
         IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)),
         9091,
-    ));
-    set
-}
-
-fn default_influx_addresses() -> HashSet<SocketAddr> {
-    let mut set = HashSet::new();
-    set.insert(SocketAddr::new(
-        IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)),
-        8086,
     ));
     set
 }

@@ -1,3 +1,5 @@
+use std::cmp::min;
+use std::ops::{Add, Mul};
 use crate::task::spawn_named;
 use influxdb2::Client as InfluxClient;
 use influxdb2::models::DataPoint;
@@ -6,11 +8,16 @@ use slatedb_common::metrics::{Metric, MetricValue};
 use tokio::sync::mpsc::error::TryRecvError;
 use tokio_stream::StreamExt;
 use std::sync::Arc;
-use std::time::Duration;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
+use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::task::JoinHandle;
 use tokio::time;
+use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
+use anyhow::Result;
+use influxdb2::RequestError;
+use tokio::time::Duration;
+use std::time::UNIX_EPOCH;
 
 use crate::config::InfluxConfig;
 use crate::fs::ZeroFS;
@@ -22,54 +29,57 @@ struct InfluxExporter {
     fs: Arc<ZeroFS>,
     influx: InfluxClient,
     config: InfluxConfig,
+    bucket: String,
     shutdown: CancellationToken,
+    rx: Receiver<DataPoint>,
+    tx: Sender<DataPoint>
 }
 
 impl InfluxExporter {
     fn new(fs: Arc<ZeroFS>, config: &InfluxConfig, shutdown: CancellationToken) -> Self {
         let influx = build_influx_client(config);
+        let (tx, rx) = channel::<DataPoint>(100_000);
         Self {
             fs,
             influx,
             config: config.clone(),
+            bucket: config.bucket.clone(),
             shutdown,
+            rx,
+            tx
         }
     }
 
     async fn run_metric_exporter(self) {
-        use tokio::sync::mpsc::channel;
+        const DEFAULT_BACKOFF: Duration = Duration::from_secs(10);
+        const MAX_BACKOFF: Duration = Duration::from_secs(300);
 
-        let bucket = self.config.bucket;
+        let mut interval_flush_influx = time::interval(Duration::from_millis(10_000 /*self.config.interval*/));
+        let mut interval_collect_stats = time::interval(Duration::from_millis(250));
 
-        let mut interval_send =
-            time::interval(Duration::from_millis(10_000 /*self.config.interval*/));
-
-        let mut interval_stats = time::interval(Duration::from_millis(250));
-
-        let (tx, rx) = channel::<DataPoint>(100_000);
+        let mut in_backoff = false;
+        let mut backoff: Duration = DEFAULT_BACKOFF;
+        let mut retry_at = SystemTime::now();
 
         tokio::select! {
-            _ = interval_send.tick() => {
+            _ = interval_flush_influx.tick() => {
+                if in_backoff && SystemTime::now() < retry_at {
+                    return;
+                }
 
-                let mut points = vec![];
-                loop {
-                    match rx.try_recv() {
-                        Ok(point) => points.push(point),
-                        Err(TryRecvError::Empty) => break,
-                        Err(TryRecvError::Disconnected) => break,
-                    }
+                if let Err(e) = self.flush().await {
+                    // if we are already in backoff, increase exponentially, else start with default
+                    backoff = if in_backoff { min(backoff.mul(2), MAX_BACKOFF) } else { DEFAULT_BACKOFF };
+                    in_backoff = true;
+
+                    retry_at = SystemTime::now().add(backoff);
+                    tracing::warn!("influx write failed: {e}, retrying in {backoff:?}")
+                } else {
+                    in_backoff = false;
                 }
-                
-                self.influx.write(&bucket, futures::stream::iter(points)).await;
             }
-            _ = interval_stats.tick() => {
-                let stats = MetricsSnapshot::collect(&self.fs);
-                let points = snapshot_points(&stats);
-                if points.is_err() {
-                    tracing::warn!("Failed converting metrics {:?}", points.err());
-                } else if let Err(e) = tx.send(futures::stream::iter(points.unwrap()).collect::<DataPoint>()).await {
-                    tracing::warn!("Failed to send snapshot {:?}", e);
-                }
+            _ = interval_collect_stats.tick() => {
+                self.collect_stats_snapshot().await;
             }
             _ = self.shutdown.cancelled() => {
                 // TODO: Write to flush all remaining data.
@@ -77,6 +87,36 @@ impl InfluxExporter {
         }
 
         todo!()
+    }
+
+    async fn flush(mut self) -> Result<(), RequestError> {
+        let mut points = vec![];
+        loop {
+            match self.rx.try_recv() {
+                Ok(point) => points.push(point),
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => break,
+            }
+        }
+
+        // TODO wrap in timeout
+        self.influx.write(&self.bucket, futures::stream::iter(points)).await
+    }
+
+    async fn collect_stats_snapshot(self) {
+        let stats = MetricsSnapshot::collect(&self.fs);
+        let points = snapshot_points(&stats).unwrap_or_else(|e| {
+            tracing::warn!("Failed converting metrics {:?}", e);
+            vec![]
+        });
+
+        for point in points {
+            if let Err(e) = self.tx.send(point).await {
+                tracing::warn!("Failed to send snapshot {:?}", e);
+                // do not try to send other metrics, as we dont expect the channel to fix itself and do not spam the logs
+                break;
+            }
+        }
     }
 }
 
@@ -92,7 +132,7 @@ pub async fn start_influx_exporter(
         influx_exporter.run_metric_exporter()
     }));
 
-    todo!()
+    handles
 }
 
 fn build_influx_client(config: &InfluxConfig) -> InfluxClient {

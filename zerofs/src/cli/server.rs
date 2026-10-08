@@ -906,10 +906,10 @@ pub async fn run_server(
         Vec::new()
     };
 
-    let influx_handle = if let Some(ref influx_config) = settings.influx {
+    let influx_handles = if let Some(ref influx_config) = settings.influx {
         crate::influx::start_influx_exporter(influx_config, Arc::clone(&fs), shutdown.clone()).await
     } else {
-        Vec::new();
+        Vec::new()
     };
 
     // Metadata compaction digest: at most one line per interval, only when
@@ -1167,7 +1167,7 @@ pub async fn run_server(
         for handle in prometheus_handles {
             let _ = handle.await;
         }
-        if let Some(handle) = influx_handle {
+        for handle in influx_handles {
             let _ = handle.await;
         }
     };

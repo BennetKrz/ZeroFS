@@ -565,7 +565,9 @@ pub struct InfluxConfig {
     pub enable_object_trace: bool,
     #[serde(default = "default_false")]
     pub enable_faccess_trace: bool,
-    
+    // TODO: Add serde serialization stuff
+    pub flush_interval_seconds: u64,
+    pub stats_snapshot_interval_seconds: u64
 }
 
 pub struct AwsConfig(pub std::collections::HashMap<String, String>);

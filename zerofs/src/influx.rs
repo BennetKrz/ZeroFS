@@ -51,8 +51,8 @@ impl InfluxExporter {
         const DEFAULT_BACKOFF: Duration = Duration::from_secs(10);
         const MAX_BACKOFF: Duration = Duration::from_secs(300);
 
-        let mut interval_flush_influx = time::interval(Duration::from_millis(10_000 /*self.config.interval*/));
-        let mut interval_collect_stats = time::interval(Duration::from_millis(250));
+        let mut interval_flush_influx = time::interval(Duration::from_millis(self.config.flush_interval_seconds));
+        let mut interval_collect_stats = time::interval(Duration::from_millis(self.config.stats_snapshot_interval_seconds));
 
         let mut in_backoff = false;
         let mut backoff: Duration = DEFAULT_BACKOFF;

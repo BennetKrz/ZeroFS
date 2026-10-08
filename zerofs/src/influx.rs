@@ -3,11 +3,13 @@ use influxdb2::Client as InfluxClient;
 use influxdb2::models::DataPoint;
 use influxdb2::models::data_point::{DataPointBuilder, DataPointError};
 use slatedb_common::metrics::{Metric, MetricValue};
+use tokio::sync::mpsc::error::TryRecvError;
+use tokio_stream::StreamExt;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::task::JoinHandle;
-use tokio::{time};
+use tokio::time;
 use tokio_util::sync::CancellationToken;
 
 use crate::config::InfluxConfig;
@@ -38,20 +40,40 @@ impl InfluxExporter {
         use tokio::sync::mpsc::channel;
 
         let bucket = self.config.bucket;
-        
+
         let mut interval_send =
-            time::interval(Duration::from_millis(250 /*self.config.interval*/));
-        
+            time::interval(Duration::from_millis(10_000 /*self.config.interval*/));
+
+        let mut interval_stats = time::interval(Duration::from_millis(250));
+
+        let (tx, rx) = channel::<DataPoint>(100_000);
+
         tokio::select! {
             _ = interval_send.tick() => {
+
+                let mut points = vec![];
+                loop {
+                    match rx.try_recv() {
+                        Ok(point) => points.push(point),
+                        Err(TryRecvError::Empty) => break,
+                        Err(TryRecvError::Disconnected) => break,
+                    }
+                }
+                
+                self.influx.write(&bucket, futures::stream::iter(points)).await;
+            }
+            _ = interval_stats.tick() => {
                 let stats = MetricsSnapshot::collect(&self.fs);
                 let points = snapshot_points(&stats);
-                self.influx.write(&bucket, futures::stream::iter(points));
-                
+                if points.is_err() {
+                    tracing::warn!("Failed converting metrics {:?}", points.err());
+                } else if let Err(e) = tx.send(futures::stream::iter(points.unwrap()).collect::<DataPoint>()).await {
+                    tracing::warn!("Failed to send snapshot {:?}", e);
+                }
             }
             _ = self.shutdown.cancelled() => {
-                
-            }
+                // TODO: Write to flush all remaining data.
+            }       
         }
 
         todo!()
@@ -63,7 +85,7 @@ pub async fn start_influx_exporter(
     fs: Arc<ZeroFS>,
     shutdown: CancellationToken,
 ) -> Vec<JoinHandle<()>> {
-    let influx_exporter = InfluxExporter::new(fs, influx, shutdown);
+    let influx_exporter = InfluxExporter::new(fs, config, shutdown);
 
     let mut handles = Vec::new();
     handles.push(spawn_named("influx-metric-exporter", async move {

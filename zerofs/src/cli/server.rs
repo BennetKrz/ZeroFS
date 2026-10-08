@@ -909,7 +909,7 @@ pub async fn run_server(
     let influx_handle = if let Some(ref influx_config) = settings.influx {
         crate::influx::start_influx_exporter(influx_config, Arc::clone(&fs), shutdown.clone()).await
     } else {
-        None
+        Vec::new();
     };
 
     // Metadata compaction digest: at most one line per interval, only when

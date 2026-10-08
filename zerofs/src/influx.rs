@@ -1,24 +1,21 @@
 use std::cmp::min;
 use std::ops::{Add, Mul};
-use crate::task::spawn_named;
 use influxdb2::Client as InfluxClient;
 use influxdb2::models::DataPoint;
 use influxdb2::models::data_point::{DataPointBuilder, DataPointError};
+use influxdb2::RequestError;
 use slatedb_common::metrics::{Metric, MetricValue};
 use tokio::sync::mpsc::error::TryRecvError;
-use tokio_stream::StreamExt;
 use std::sync::Arc;
-use std::time::SystemTime;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::task::JoinHandle;
 use tokio::time;
-use tokio::time::Instant;
+use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
 use anyhow::Result;
-use influxdb2::RequestError;
-use tokio::time::Duration;
-use std::time::UNIX_EPOCH;
 
+use crate::task::spawn_named;
 use crate::config::InfluxConfig;
 use crate::fs::ZeroFS;
 use crate::fs::tracing::{FileAccessEvent, FileOperation};

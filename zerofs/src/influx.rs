@@ -83,7 +83,7 @@ impl InfluxExporter {
             }
             _ = self.shutdown.cancelled() => {
                 // TODO: Write to flush all remaining data.
-            }       
+            }
         }
 
         todo!()
@@ -129,7 +129,7 @@ pub async fn start_influx_exporter(
 
     let mut handles = Vec::new();
     handles.push(spawn_named("influx-metric-exporter", async move {
-        influx_exporter.run_metric_exporter()
+        influx_exporter.run_metric_exporter().await
     }));
 
     handles

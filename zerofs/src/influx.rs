@@ -1,26 +1,27 @@
-use std::cmp::min;
-use std::ops::{Add, Mul};
-use influxdb2::Client as InfluxClient;
+use anyhow::Result;
+use influxdb2::RequestError;
 use influxdb2::models::DataPoint;
 use influxdb2::models::data_point::{DataPointBuilder, DataPointError};
-use influxdb2::RequestError;
+use influxdb2::{Client as InfluxClient, ClientBuilder as InfluxClientBuilder};
+use reqwest011::ClientBuilder as InfluxReqwestBuilder;
 use slatedb_common::metrics::{Metric, MetricValue};
-use tokio::sync::mpsc::error::TryRecvError;
+use std::cmp::min;
+use std::ops::{Add, Mul};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio::sync::mpsc::error::TryRecvError;
+use tokio::sync::mpsc::{Receiver, Sender, channel};
 use tokio::task::JoinHandle;
 use tokio::time;
 use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
-use anyhow::Result;
 
-use crate::task::spawn_named;
 use crate::config::InfluxConfig;
 use crate::fs::ZeroFS;
 use crate::fs::tracing::{FileAccessEvent, FileOperation};
 use crate::metrics_snapshot::MetricsSnapshot;
 use crate::object_trace::{ObjectAccessEvent, ObjectOperation};
+use crate::task::spawn_named;
 
 struct InfluxExporter {
     fs: Arc<ZeroFS>,
@@ -29,7 +30,7 @@ struct InfluxExporter {
     bucket: String,
     shutdown: CancellationToken,
     rx: Receiver<DataPoint>,
-    tx: Sender<DataPoint>
+    tx: Sender<DataPoint>,
 }
 
 impl InfluxExporter {
@@ -43,7 +44,7 @@ impl InfluxExporter {
             bucket: config.bucket.clone(),
             shutdown,
             rx,
-            tx
+            tx,
         }
     }
 
@@ -51,8 +52,11 @@ impl InfluxExporter {
         const DEFAULT_BACKOFF: Duration = Duration::from_secs(10);
         const MAX_BACKOFF: Duration = Duration::from_secs(300);
 
-        let mut interval_flush_influx = time::interval(Duration::from_millis(self.config.flush_interval_seconds));
-        let mut interval_collect_stats = time::interval(Duration::from_millis(self.config.stats_snapshot_interval_seconds));
+        let mut interval_flush_influx =
+            time::interval(Duration::from_millis(self.config.flush_interval_seconds));
+        let mut interval_collect_stats = time::interval(Duration::from_millis(
+            self.config.stats_snapshot_interval_seconds,
+        ));
 
         let mut in_backoff = false;
         let mut backoff: Duration = DEFAULT_BACKOFF;
@@ -97,7 +101,9 @@ impl InfluxExporter {
         }
 
         // TODO wrap in timeout
-        self.influx.write(&self.bucket, futures::stream::iter(points)).await
+        self.influx
+            .write(&self.bucket, futures::stream::iter(points))
+            .await
     }
 
     async fn collect_stats_snapshot(self) {
@@ -133,11 +139,15 @@ pub async fn start_influx_exporter(
 }
 
 fn build_influx_client(config: &InfluxConfig) -> InfluxClient {
-    InfluxClient::new(
+    let reqwest_client_builder = InfluxReqwestBuilder::new().timeout(Duration::from_secs(5));
+    InfluxClientBuilder::with_builder(
+        reqwest_client_builder,
         config.url.clone(),
         config.org.clone(),
         config.auth_token.clone(),
     )
+    .build()
+    .expect("failed to build influx client")
 }
 
 /// Influx integer fields are signed, clamp counters that would overflow.

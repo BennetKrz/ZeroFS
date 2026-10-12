@@ -84,7 +84,6 @@ impl InfluxExporter {
             }
             _ = self.shutdown.cancelled() => {
                 if let Err(e) = self.flush().await {
-<<<<<<< HEAD
                     tracing::warn!("failed to write last influx metrics {:?}", e);
                 }
             }

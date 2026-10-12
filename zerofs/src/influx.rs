@@ -83,7 +83,9 @@ impl InfluxExporter {
                 self.collect_stats_snapshot().await;
             }
             _ = self.shutdown.cancelled() => {
-                // TODO: Write to flush all remaining data.
+                if let Err(e) = self.flush().await {
+                    tracing::warn!("failed to write last influx metrics {:?}", e);
+                }
             }
         }
 
